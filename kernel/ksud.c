@@ -69,10 +69,6 @@ bool susfs_is_sus_su_ready = false;
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_SU
 u32 ksu_devpts_sid;
 
-#ifdef CONFIG_COMPAT
-bool ksu_is_compat __read_mostly = false;
-#endif
-
 void ksu_on_post_fs_data(void)
 {
 	static bool done = false;
