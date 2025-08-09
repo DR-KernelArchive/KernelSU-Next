@@ -71,8 +71,21 @@ jobs:
     with:
       os: ${{ matrix.os }}
 
-  build-ksud:
+  build-ksuinit:
     needs: [check-cache, build-susfsd]
+    if: needs.check-cache.outputs.cache-hit != 'true'
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-linux-android
+            os: ubuntu-latest
+    uses: ./.github/workflows/ksuinit.yml
+    with:
+      target: ${{ matrix.target }}
+      os: ${{ matrix.os }}
+
+  build-ksud:
+    needs: [check-cache, build-ksuinit]
     if: needs.check-cache.outputs.cache-hit != 'true'
     strategy:
       matrix:
@@ -98,6 +111,13 @@ jobs:
         with:
           name: susfsd-linux-android
           path: cached-artifacts/susfsd
+
+      - name: Download ksuinit artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ksuinit-aarch64-linux-android
+          path: cached-artifacts/ksuinit
+          merge-multiple: true
 
       - name: Download ksud_overlayfs artifacts
         uses: actions/download-artifact@v4

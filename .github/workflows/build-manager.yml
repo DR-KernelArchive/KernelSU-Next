@@ -33,8 +33,20 @@ jobs:
     with:
       os: ${{ matrix.os }}
 
-  build-ksud:
+  build-ksuinit:
     needs: build-susfsd
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-linux-android
+            os: ubuntu-latest
+    uses: ./.github/workflows/ksuinit.yml
+    with:
+      target: ${{ matrix.target }}
+      os: ${{ matrix.os }}
+
+  build-ksud:
+    needs: build-ksuinit
     strategy:
       matrix:
         include:

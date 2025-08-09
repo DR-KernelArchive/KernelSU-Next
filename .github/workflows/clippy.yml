@@ -6,6 +6,7 @@ on:
       - next
     paths:
       - '.github/workflows/clippy.yml'
+      - 'userspace/ksuinit/**'
       - 'userspace/ksud_magic/**'
       - 'userspace/ksud_overlayfs/**'
   pull_request:
@@ -13,6 +14,7 @@ on:
       - next
     paths:
       - '.github/workflows/clippy.yml'
+      - 'userspace/ksuinit/**'
       - 'userspace/ksud_magic/**'
       - 'userspace/ksud_overlayfs/**'
 
@@ -32,6 +34,11 @@ jobs:
       - name: Setup Cross
         run: RUSTFLAGS="" cargo install cross
 
+      - name: Cache ksuinit
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: userspace/ksuinit
+
       - name: Cache ksud_overlayfs
         uses: Swatinem/rust-cache@v2
         with:
@@ -44,6 +51,8 @@ jobs:
 
       - name: Run Clippy
         run: |
+          cross clippy --manifest-path userspace/ksuinit/Cargo.toml --target aarch64-linux-android --release
+          
           cross clippy --manifest-path userspace/ksud_magic/Cargo.toml --target aarch64-linux-android --release
           cross clippy --manifest-path userspace/ksud_overlayfs/Cargo.toml --target aarch64-linux-android --release
 
