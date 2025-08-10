@@ -6,14 +6,6 @@
 
 # For LKM make sure you have imported the androidX-X.X_kernelsu.ko drivers to userspace/ksud_*/bin/aarch64 directory.
 
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="aarch64-linux-android21-clang"
-
-cross build --target aarch64-linux-android --release --manifest-path ./userspace/ksuinit/Cargo.toml
-
-cp userspace/ksuinit/target/aarch64-linux-android/release/ksuinit userspace/ksud_magic/bin/aarch64/ksuinit
-
-cp userspace/ksuinit/target/aarch64-linux-android/release/ksuinit userspace/ksud_overlayfs/bin/aarch64/ksuinit
-
 cross build --target aarch64-linux-android --release --manifest-path ./userspace/ksud_magic/Cargo.toml
 
 cp userspace/ksud_magic/target/aarch64-linux-android/release/ksud manager/app/src/main/jniLibs/arm64-v8a/libksud_magic.so
