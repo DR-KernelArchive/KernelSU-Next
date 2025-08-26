@@ -173,6 +173,13 @@ config KSU_SUSFS_SUS_SU
                 the same as the su implementaion of non-gki kernel without kprobe supported.
       - Only apps with root access granted by ksu manager are allowed to get root.
 
+config KSU_SWITCH_MANAGER
+	bool "KernelSU switch manager support"
+	depends on KSU
+	default n
+	help
+	  Enable KernelSU switch manager support.
+
 endmenu
 
 endmenu
