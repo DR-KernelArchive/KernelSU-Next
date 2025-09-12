@@ -38,7 +38,7 @@ perform_cleanup() {
 
 # Sets up or update KernelSU-Next environment
 setup_kernelsu() {
-    echo "[+] Setting up KernelSU-Next-Custom..."
+    echo "[+] Setting up KernelSU-Next..."
     test -d "$GKI_ROOT/KernelSU-Next" || git clone https://github.com/kernel-build-from-rainyland/KernelSU-Next && echo "[+] Repository cloned."
     cd "$GKI_ROOT/KernelSU-Next"
     git stash && echo "[-] Stashed current changes."
