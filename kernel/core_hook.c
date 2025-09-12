@@ -217,6 +217,7 @@ static void disable_seccomp(void)
 #ifdef CONFIG_SECCOMP
 	current->seccomp.mode = 0;
 	current->seccomp.filter = NULL;
+	atomic_set(&current->seccomp.filter_count, 0);
 #else
 #endif
 }
@@ -1250,7 +1251,7 @@ do_umount:
 	// check old process's selinux context, if it is not zygote, ignore it!
 	// because some su apps may setuid to untrusted_app but they are in global mount namespace
 	// when we umount for such process, that is a disaster!
-	if (!is_zygote(old->security)) {
+	if (!ksu_is_zygote(old->security)) {
 		pr_info("handle umount ignore non zygote child: %d\n",
 			current->pid);
 		return 0;
