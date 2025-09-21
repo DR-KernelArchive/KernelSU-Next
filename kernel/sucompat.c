@@ -69,19 +69,6 @@ static __always_inline bool is_su_allowed(const void *ptr_to_check)
 	}
 #endif
 
-#ifndef CONFIG_KSU_SUSFS_SUS_SU
-	if (!ksu_is_allow_uid(current_uid().val)) {
-		return 0;
-	}
-#endif
-
-#ifdef CONFIG_KSU_SUSFS_SUS_SU
-	char path[sizeof(su)] = {0};
-#else
-	char path[sizeof(su) + 1];
-	memset(path, 0, sizeof(path));
-#endif
-	ksu_strncpy_from_user_nofault(path, *filename_user, sizeof(path));
 	if (likely(!ksu_is_allow_uid(current_uid().val)))
 		return false;
 
@@ -157,24 +144,6 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
 	return ksu_sucompat_user_common(filename_user, "newfstatat", false);
 }
 
-// sys_execve, compat_sys_execve
-int ksu_handle_execve_sucompat(int *fd, const char __user **filename_user,
-			       void *__never_use_argv, void *__never_use_envp,
-			       int *__never_use_flags)
-{
-
-#ifndef CONFIG_KSU_KPROBES_HOOK
-	if (!ksu_sucompat_non_kp) {
-		return 0;
-	}
-#endif
-
-	if (!is_su_allowed((const void *)filename_user))
-		return 0;
-
-	return ksu_sucompat_user_common(filename_user, "sys_execve", true);
-}
-
 // the call from execve_handler_pre won't provided correct value for __never_use_argument, use them after fix execve_handler_pre, keeping them for consistence for manually patched code
 int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
 				 void *__never_use_argv, void *__never_use_envp,
@@ -212,15 +181,11 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
 	return 0;
 }
 
+// sys_execve, compat_sys_execve
 int ksu_handle_execve_sucompat(int *fd, const char __user **filename_user,
 			       void *__never_use_argv, void *__never_use_envp,
 			       int *__never_use_flags)
 {
-#ifdef CONFIG_KSU_SUSFS_SUS_SU
-	char path[sizeof(su)] = {0};
-#else
-	char path[sizeof(su) + 1];
-#endif
 
 #ifndef CONFIG_KSU_KPROBES_HOOK
 	if (!ksu_sucompat_non_kp) {
@@ -228,24 +193,10 @@ int ksu_handle_execve_sucompat(int *fd, const char __user **filename_user,
 	}
 #endif
 
-	if (unlikely(!filename_user))
+	if (!is_su_allowed((const void *)filename_user))
 		return 0;
 
-	memset(path, 0, sizeof(path));
-	ksu_strncpy_from_user_retry(path, *filename_user, sizeof(path));
-
-	if (likely(memcmp(path, su, sizeof(su))))
-		return 0;
-
-	if (!ksu_is_allow_uid(current_uid().val))
-		return 0;
-
-	pr_info("sys_execve su found\n");
-	*filename_user = ksud_user_path();
-
-	ksu_escape_to_root();
-
-	return 0;
+	return ksu_sucompat_user_common(filename_user, "sys_execve", true);
 }
 
 int ksu_handle_devpts(struct inode *inode)
