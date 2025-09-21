@@ -472,7 +472,7 @@ static int throne_tracker_thread(void *data)
 	return 0;
 }
 
-void track_throne()
+void ksu_track_throne()
 {
 #ifndef CONFIG_KSU_THRONE_TRACKER_ALWAYS_THREADED
 	static bool throne_tracker_first_run __read_mostly = true;

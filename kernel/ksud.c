@@ -169,7 +169,7 @@ static int ksu_handle_bprm_ksud(const char *filename, const char *argv1, const c
 		if (!strcmp(envp_n, "INIT_SECOND_STAGE=1")
 			|| !strcmp(envp_n, "INIT_SECOND_STAGE=true") ) {
 			pr_info("%s: /init +envp: INIT_SECOND_STAGE executed\n", __func__);
-			apply_kernelsu_rules();
+			ksu_apply_kernelsu_rules();
 			init_second_stage_executed = true;
 			ksu_android_ns_fs_check();
 		}
