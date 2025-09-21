@@ -86,6 +86,7 @@ void ksu_on_post_fs_data(void)
 	pr_info("devpts sid: %d\n", ksu_devpts_sid);
 }
 
+#ifdef CONFIG_KSU_KPROBES_HOOK
 #define MAX_ARG_STRINGS 0x7FFFFFFF
 struct user_arg_ptr {
 #ifdef CONFIG_COMPAT
@@ -98,11 +99,12 @@ struct user_arg_ptr {
 #endif
 	} ptr;
 };
+#endif
 
 // since _ksud handler only uses argv and envp for comparisons
 // this can probably work
 // adapted from ksu_handle_execveat_ksud
-static int ksu_handle_bprm_ksud(const char *filename, const char *argv1, const char *envp_hex)
+static int ksu_handle_bprm_ksud(const char *filename, const char *argv1, const char *envp, size_t envp_len)
 {
 	static const char app_process[] = "/system/bin/app_process";
 	static bool first_app_process = true;
@@ -113,16 +115,16 @@ static int ksu_handle_bprm_ksud(const char *filename, const char *argv1, const c
 	static const char old_system_init[] = "/init";
 	static bool init_second_stage_executed = false;
 
-	// return early when disabled
+#ifndef CONFIG_KSU_KPROBES_HOOK
 	if (!ksu_execveat_hook)
 		return 0;
+#endif
 
 	if (!filename)
 		return 0;
 
 	// debug! remove me!
-	pr_info("%s: filaname: %s argv1: %s \n", __func__, filename, argv1);
-	pr_info("%s: envp (hex): %s\n", __func__, envp_hex);
+	pr_info("%s: filename: %s argv1: %s envp_len: %zu\n", __func__, filename, argv1, envp_len);
 
 	if (init_second_stage_executed)
 		goto first_app_process;
@@ -150,61 +152,52 @@ static int ksu_handle_bprm_ksud(const char *filename, const char *argv1, const c
 	}
 
 	// /init without argv1/useless-argv1 but usable envp
-	// ksu_bprm_check passed it packed, so for pattern
-	// 494E49545F5345434F4E445F53544147453D31 = INIT_SECOND_STAGE=1
-	// 494E49545F5345434F4E445F53544147453D74727565 = INIT_SECOND_STAGE=true
 	// untested! TODO: test and debug me!
-	if (!init_second_stage_executed && envp_hex
-		&& (!memcmp(filename, old_system_init, sizeof(old_system_init) - 1))) {
-		if (strstr(envp_hex, "494E49545F5345434F4E445F53544147453D31")
-			|| strstr(envp_hex, "494E49545F5345434F4E445F53544147453D74727565") ) {
+	if (!init_second_stage_executed && (!memcmp(filename, old_system_init, sizeof(old_system_init) - 1))) {
+
+		// we hunt for "INIT_SECOND_STAGE"
+		const char *envp_n = envp;
+		unsigned int envc = 1;
+		do {
+			if (strstarts(envp_n, "INIT_SECOND_STAGE"))
+				break;
+			envp_n += strlen(envp_n) + 1;
+			envc++;
+		} while (envp_n < envp + envp_len);
+		pr_info("%s: envp[%d]: %s\n", __func__, envc, envp_n);
+
+		if (!strcmp(envp_n, "INIT_SECOND_STAGE=1")
+			|| !strcmp(envp_n, "INIT_SECOND_STAGE=true") ) {
 			pr_info("%s: /init +envp: INIT_SECOND_STAGE executed\n", __func__);
-			ksu_apply_kernelsu_rules();
+			apply_kernelsu_rules();
 			init_second_stage_executed = true;
 			ksu_android_ns_fs_check();
 		}
 	}
 
 first_app_process:
-	if (first_app_process && !strcmp(filename, app_process)) {
+	if (first_app_process && !memcmp(filename, app_process, sizeof(app_process) - 1)) {
 		first_app_process = false;
 		pr_info("%s: exec app_process, /data prepared, second_stage: %d\n", __func__, init_second_stage_executed);
-		ksu_on_post_fs_data(); // actual ksud execution
+		ksu_on_post_fs_data();
+
 		stop_execve_hook();
 	}
 
 	return 0;
 }
 
-// needs some locking, checking with copy_from_user_nofault,
-// theres actually failed / incomplete copies
-static bool is_locked_copy_ok(void *to, const void __user *from, size_t len)
-{
-	DEFINE_SPINLOCK(ksu_usercopy_spinlock);
-	spin_lock(&ksu_usercopy_spinlock);
-	bool ret = !ksu_copy_from_user_nofault(to, from, len);
-	spin_unlock(&ksu_usercopy_spinlock);
-
-	if (likely(ret))
-		return ret;
-
-	// if nofault copy fails, well, atleast we can try again
-	// this happening is very bad though
-	// I'm adding this just for the sake of resilience
-	pr_info("%s: _nofault copy failed !! report this incident\n", __func__);
-	return !copy_from_user(to, from, len);
-}
-
 int ksu_handle_pre_ksud(const char *filename)
 {
-
+#ifndef CONFIG_KSU_KPROBES_HOOK
 	if (likely(!ksu_execveat_hook))
 		return 0;
+#endif
 
-	// not /system/bin/init, not /init, not /system/bin/app_process
+	// not /system/bin/init, not /init, not /system/bin/app_process (64/32 thingy)
 	// return 0;
 	if (likely(strcmp(filename, "/system/bin/init") && strcmp(filename, "/init")
-		&& strcmp(filename, "/system/bin/app_process") ))
+		&& !strstarts(filename, "/system/bin/app_process") ))
 		return 0;
 
 	if (!current || !current->mm)
@@ -220,59 +213,50 @@ int ksu_handle_pre_ksud(const char *filename)
 	size_t arg_len = arg_end - arg_start;
 	size_t envp_len = env_end - env_start;
 
-	if (arg_len == 0 || envp_len == 0) // this wont make sense, filter it
-		goto out;
+	if (arg_len <= 0 || envp_len <= 0) // this wont make sense, filter it
+		return 0;
 
-	char *args = kmalloc(arg_len + 1, GFP_ATOMIC);
-	char *envp = kmalloc(envp_len + 1, GFP_ATOMIC);
-	char *envp_hex = kmalloc(envp_len * 2 + 1, GFP_ATOMIC); // x2 since bin2hex
-	if (!args || !envp || !envp_hex)
-		goto out;
+	#define ARGV_MAX 32  // this is enough for argv1
+	#define ENVP_MAX 256  // this is enough for INIT_SECOND_STAGE
+	char args[ARGV_MAX];
+	size_t argv_copy_len = (arg_len > ARGV_MAX) ? ARGV_MAX : arg_len;
+	char envp[ENVP_MAX];
+	size_t envp_copy_len = (envp_len > ENVP_MAX) ? ENVP_MAX : envp_len;
 
 	// we cant use strncpy on here, else it will truncate once it sees \0
-	if (!is_locked_copy_ok(args, (void __user *)arg_start, arg_len))
-		goto out;
+	if (ksu_copy_from_user_retry(args, (void __user *)arg_start, argv_copy_len))
+		return 0;
 
-	if (!is_locked_copy_ok(envp, (void __user *)env_start, envp_len))
-		goto out;
+	if (ksu_copy_from_user_retry(envp, (void __user *)env_start, envp_copy_len))
+		return 0;
 
-	args[arg_len] = '\0';
+	args[ARGV_MAX - 1] = '\0';
+	envp[ENVP_MAX - 1] = '\0';
 
-	// I fail to simplify the loop so, lets just pack it
-	bin2hex(envp_hex, envp, envp_len);
-	envp_hex[envp_len * 2] = '\0';
-
-	// debug!
-	//pr_info("%s: envp (hex): %s\n", __func__, envp_hex);
+#ifdef CONFIG_KSU_DEBUG
+	char *envp_n = envp;
+	unsigned int envc = 1;
+	do {
+		pr_info("%s: envp[%d]: %s\n", __func__, envc, envp_n);
+		envp_n += strlen(envp_n) + 1;
+		envc++;
+	} while (envp_n < envp + envp_copy_len);
+#endif
 
 	// we only need argv1 !
 	// abuse strlen here since it only gets length up to \0
 	char *argv1 = args + strlen(args) + 1;
-	if (argv1 >= args + arg_len) // out of bounds!
+	if (argv1 >= args + argv_copy_len) // out of bounds!
 		argv1 = "";
 
-	// pass whole for envp?!!
-	// pr_info("%s: fname: %s argv1: %s \n", __func__, filename, argv1);
-	ksu_handle_bprm_ksud(filename, argv1, envp_hex);
-
-out:
-	kfree(args);
-	kfree(envp);
-	kfree(envp_hex);
-
-	return 0;
+	return ksu_handle_bprm_ksud(filename, argv1, envp, envp_copy_len);
 }
 
+#ifdef CONFIG_KSU_KPROBES_HOOK
 __maybe_unused int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
 			     struct user_arg_ptr *argv, struct user_arg_ptr *envp,
 			     int *flags)
 {
-#ifndef CONFIG_KSU_KPROBES_HOOK
-	// return early when disabled
-	if (!ksu_execveat_hook)
-		return 0;
-#endif
-
 	if (!filename_ptr)
 		return 0;
 
@@ -282,6 +266,7 @@ __maybe_unused int ksu_handle_execveat_ksud(int *fd, struct filename **filename_
 
 	return ksu_handle_pre_ksud((char *)filename->name);
 }
+#endif
 
 static ssize_t (*orig_read)(struct file *, char __user *, size_t, loff_t *);
 static ssize_t (*orig_read_iter)(struct kiocb *, struct iov_iter *);
@@ -481,28 +466,28 @@ bool ksu_is_safe_mode()
 __maybe_unused int ksu_handle_execve_ksud(const char __user *filename_user,
 			const char __user *const __user *__argv)
 {
+#ifdef CONFIG_KSU_KPROBES_HOOK
 	struct user_arg_ptr argv = { .ptr.native = __argv };
 	struct filename filename_in, *filename_p;
 	char path[32];
 
-#ifndef CONFIG_KSU_KPROBES_HOOK
-	// return early if disabled.
-	if (!ksu_execveat_hook) {
-		return 0;
-	}
-#endif
-
 	if (!filename_user)
 		return 0;
 
-	memset(path, 0, sizeof(path));
-	ksu_strncpy_from_user_nofault(path, filename_user, 32);
+	long len = ksu_strncpy_from_user_nofault(path, filename_user, 32);
+	if (len <= 0)
+		return 0;
+
+	path[sizeof(path) - 1] = '\0';
 
 	// this is because ksu_handle_execveat_ksud calls it filename->name
 	filename_in.name = path;
 	filename_p = &filename_in;
-    
+
 	return ksu_handle_execveat_ksud(AT_FDCWD, &filename_p, &argv, NULL, NULL);
+#else
+	return 0;
+#endif
 }
 
 #ifdef CONFIG_KSU_KPROBES_HOOK
@@ -630,6 +615,29 @@ static void do_stop_execve_hook(struct work_struct *work)
 static void do_stop_input_hook(struct work_struct *work)
 {
 	unregister_kprobe(&input_event_kp);
+}
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 14, 0)
+#include "objsec.h" // task_security_struct
+bool is_ksu_transition(const struct task_security_struct *old_tsec,
+			const struct task_security_struct *new_tsec)
+{
+	static u32 ksu_sid;
+	char *secdata;
+	u32 seclen;
+	bool allowed = false;
+
+	if (!ksu_sid)
+		security_secctx_to_secid("u:r:su:s0", strlen("u:r:su:s0"), &ksu_sid);
+
+	if (security_secid_to_secctx(old_tsec->sid, &secdata, &seclen))
+		return false;
+
+	allowed = (!strcmp("u:r:init:s0", secdata) && new_tsec->sid == ksu_sid);
+	security_release_secctx(secdata, seclen);
+	
+	return allowed;
 }
 #endif
 

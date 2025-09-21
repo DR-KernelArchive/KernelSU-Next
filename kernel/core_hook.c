@@ -9,6 +9,7 @@
 #include <linux/kprobes.h>
 #include <linux/binfmts.h>
 #ifdef CONFIG_KSU_LSM_SECURITY_HOOKS
+#include <linux/binfmts.h>
 #include <linux/lsm_hooks.h>
 #endif
 #include <linux/mm.h>
@@ -1394,23 +1395,27 @@ int ksu_key_permission(key_ref_t key_ref, const struct cred *cred,
 bool ksu_is_compat __read_mostly = false;
 #endif
 
-LSM_HANDLER_TYPE ksu_bprm_check(struct linux_binprm *bprm)
+#ifdef CONFIG_KSU_LSM_SECURITY_HOOKS
+
+int ksu_bprm_check(struct linux_binprm *bprm)
 {
 	char *filename = (char *)bprm->filename;
 
+#ifndef CONFIG_KSU_KPROBES_HOOK
 	if (likely(!ksu_execveat_hook))
 		return 0;
+#endif
 
 /*
- * 32-on-64 compat detection
+ * 32-on-64 compat detection 
  *
  * notes:
  * bprm->buf provides the binary itself !!
  * https://unix.stackexchange.com/questions/106234/determine-if-a-specific-process-is-32-or-64-bit
- * buf[0] == 0x7f && buf[1] == 'E' &&  buf[2] == 'L' && buf[3] == 'F'
+ * buf[0] == 0x7f && buf[1] == 'E' &&  buf[2] == 'L' && buf[3] == 'F' 
  * so as that said, we check ELF header, then we check 5th byte, 0x01 = 32-bit, 0x02 = 64 bit
  * we only check first execution of /data/adb/ksud and while ksu_execveat_hook is open!
- *
+ * 
  */
 #ifdef CONFIG_COMPAT
 	static bool compat_check_done __read_mostly = false;
@@ -1418,7 +1423,6 @@ LSM_HANDLER_TYPE ksu_bprm_check(struct linux_binprm *bprm)
 		&& !memcmp(bprm->buf, "\x7f\x45\x4c\x46", 4) ) {
 		if (bprm->buf[4] == 0x01 )
 			ksu_is_compat = true;
-
 		pr_info("%s: %s ELF magic found! ksu_is_compat: %d \n", __func__, filename, ksu_is_compat);
 		compat_check_done = true;
 	}
@@ -1430,7 +1434,6 @@ LSM_HANDLER_TYPE ksu_bprm_check(struct linux_binprm *bprm)
 
 }
 
-#ifdef CONFIG_KSU_LSM_SECURITY_HOOKS
 static int ksu_task_prctl(int option, unsigned long arg2, unsigned long arg3,
 			  unsigned long arg4, unsigned long arg5)
 {
