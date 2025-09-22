@@ -112,9 +112,17 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                     )
                 )
             }
+            
             if (ksuVersion != null && !rootAvailable()) {
                 WarningCard(
-                    stringResource(id = R.string.grant_root_failed)
+                    stringResource(id = R.string.grant_root_failed),
+                    onClick = {
+                        val pm = context.packageManager
+                        val intent = pm.getLaunchIntentForPackage(context.packageName)
+                        intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                        Runtime.getRuntime().exit(0)
+                    }
                 )
             }
             val checkUpdate =
@@ -229,18 +237,37 @@ fun UpdateCard() {
         exit = shrinkVertically() + fadeOut()
     ) {
         val updateDialog = rememberConfirmDialog(onConfirm = { uriHandler.openUri(newVersionUrl) })
-        WarningCard(
-            message = stringResource(id = R.string.new_version_available).format(newVersionCode),
-            MaterialTheme.colorScheme.outlineVariant
+        ElevatedCard(
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.primary
+            )
         ) {
-            if (changelog.isEmpty()) {
-                uriHandler.openUri(newVersionUrl)
-            } else {
-                updateDialog.showConfirm(
-                    title = title,
-                    content = changelog,
-                    markdown = true,
-                    confirm = updateText
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (changelog.isEmpty()) {
+                            uriHandler.openUri(newVersionUrl)
+                        } else {
+                            updateDialog.showConfirm(
+                                title = title,
+                                content = changelog,
+                                markdown = true,
+                                confirm = updateText
+                            )
+                        }
+                    }
+                    .padding(24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Update,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 20.dp)
+                )
+                Text(
+                    text = stringResource(id = R.string.new_version_available).format(newVersionCode),
+                    style = MaterialTheme.typography.bodyMedium
                 )
             }
         }
@@ -533,8 +560,14 @@ fun WarningCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(onClick?.let { Modifier.clickable { it() } } ?: Modifier)
-                .padding(24.dp)
+                .padding(24.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Icon(
+                imageVector = Icons.Filled.SentimentDissatisfied,
+                contentDescription = null,
+                modifier = Modifier.padding(end = 20.dp)
+            )
             Text(
                 text = message, style = MaterialTheme.typography.bodyMedium
             )
