@@ -59,6 +59,7 @@ fun HomeScreen(navigator: DestinationsNavigator) {
 
     val isManager = Natives.becomeManager(ksuApp.packageName)
     val ksuVersion = if (isManager) Natives.version else null
+    val ksuVersionTag = if (isManager) Natives.getVersionTag() else null
 
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -89,7 +90,7 @@ fun HomeScreen(navigator: DestinationsNavigator) {
                 if (it >= Natives.MINIMAL_SUPPORTED_KERNEL_LKM && kernelVersion.isGKI()) Natives.isLkmMode else null
             }
 
-            StatusCard(kernelVersion, ksuVersion, lkmMode) {
+            StatusCard(kernelVersion, ksuVersion, lkmMode, ksuVersionTag = ksuVersionTag) {
                 navigator.navigate(InstallScreenDestination)
             }
 
@@ -146,17 +147,18 @@ private fun SuperuserCard() {
     ElevatedCard(
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer
-        )
+        ),
+        modifier = Modifier.height(IntrinsicSize.Min)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(8.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = if (count <= 1) {
@@ -182,17 +184,18 @@ private fun ModuleCard() {
     ElevatedCard(
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer
-        )
+        ),
+        modifier = Modifier.height(IntrinsicSize.Min)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(8.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = if (count <= 1) {
@@ -283,17 +286,17 @@ fun RebootDropdownItem(@StringRes id: Int, reason: String = "") {
     })
 }
 
-@Composable
-fun getSeasonalIcon(): ImageVector {
-    val month = Calendar.getInstance().get(Calendar.MONTH) // 0-11 for January-December
-    return when (month) {
-        Calendar.DECEMBER, Calendar.JANUARY, Calendar.FEBRUARY -> Icons.Filled.AcUnit // Winter
-        Calendar.MARCH, Calendar.APRIL, Calendar.MAY -> Icons.Filled.Spa // Spring
-        Calendar.JUNE, Calendar.JULY, Calendar.AUGUST -> Icons.Filled.WbSunny // Summer
-        Calendar.SEPTEMBER, Calendar.OCTOBER, Calendar.NOVEMBER -> Icons.Filled.Forest // Fall
-        else -> Icons.Filled.Whatshot // Fallback icon
-    }
-}
+// @Composable
+// fun getSeasonalIcon(): ImageVector {
+//     val month = Calendar.getInstance().get(Calendar.MONTH) // 0-11 for January-December
+//     return when (month) {
+//         Calendar.DECEMBER, Calendar.JANUARY, Calendar.FEBRUARY -> Icons.Filled.AcUnit // Winter
+//         Calendar.MARCH, Calendar.APRIL, Calendar.MAY -> Icons.Filled.Spa // Spring
+//         Calendar.JUNE, Calendar.JULY, Calendar.AUGUST -> Icons.Filled.WbSunny // Summer
+//         Calendar.SEPTEMBER, Calendar.OCTOBER, Calendar.NOVEMBER -> Icons.Filled.Forest // Fall
+//         else -> Icons.Filled.Whatshot // Fallback icon
+//     }
+// }
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -305,9 +308,13 @@ private fun TopBar(
     scrollBehavior: TopAppBarScrollBehavior? = null
 ) {
     var isSpinning by remember { mutableStateOf(false) }
+    var rotationTarget by remember { mutableStateOf(0f) }
     val rotation by animateFloatAsState(
-        targetValue = if (isSpinning) 360f else 0f,
-        animationSpec = tween(durationMillis = 800),
+        targetValue = rotationTarget,
+        animationSpec = tween(
+            durationMillis = 1400,
+            easing = androidx.compose.animation.core.FastOutSlowInEasing
+        ),
         finishedListener = {
             isSpinning = false
         }
@@ -315,6 +322,7 @@ private fun TopBar(
 
     LaunchedEffect(Unit) {
         isSpinning = true
+        rotationTarget += 360f * 6
     }
 
     TopAppBar(
@@ -325,11 +333,14 @@ private fun TopBar(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) {
-                    if (!isSpinning) isSpinning = true
+                    if (!isSpinning) {
+                        isSpinning = true
+                        rotationTarget += 360f * 6
+                    }
                 }
             ) {
                 Icon(
-                    imageVector = getSeasonalIcon(),
+                    painter = painterResource(R.drawable.ic_ksu_next),
                     contentDescription = null,
                     modifier = Modifier
                         .padding(end = 8.dp)
@@ -397,6 +408,7 @@ private fun StatusCard(
     ksuVersion: Int?,
     lkmMode: Boolean?,
     moduleUpdateCount: Int = 0,
+    ksuVersionTag: String? = null,
     onClickInstall: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -506,8 +518,13 @@ private fun StatusCard(
                             )
                         }
 
+                        val versionText = if (!ksuVersionTag.isNullOrEmpty()) {
+                            stringResource(id = R.string.home_working_version, ksuVersionTag, ksuVersion ?: 0)
+                        } else {
+                            stringResource(id = R.string.home_working_version, "v0.0.0", ksuVersion ?: 0)
+                        }
                         Text(
-                            text = stringResource(R.string.home_working_version, ksuVersion),
+                            text = versionText,
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -644,7 +661,7 @@ private fun InfoCard(autoExpand: Boolean = false) {
                     } else {
                         "${managerVersion.first} (${managerVersion.second})"
                     },
-                    icon = painterResource(R.drawable.ic_ksu_next),
+                    icon = Icons.Filled.AutoAwesomeMotion,
                 )
 
                 if (ksuVersion != null &&
@@ -694,7 +711,7 @@ private fun InfoCard(autoExpand: Boolean = false) {
                         Spacer(Modifier.height(16.dp))
                         InfoCardItem(
                             label = stringResource(R.string.zygisk_status),
-                            content = stringResource(R.string.enabled),
+                            content = "${stringResource(R.string.enabled)} | ${getZygiskImplementation()} | ${getZygiskVersion()}",
                             icon = Icons.Filled.Vaccines
                         )
                     }
