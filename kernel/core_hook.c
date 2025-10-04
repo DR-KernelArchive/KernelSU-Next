@@ -151,7 +151,7 @@ static inline bool is_allow_su()
 	return ksu_is_allow_uid(current_uid().val);
 }
 
-static inline bool is_unsupported_app_uid(uid_t uid)
+static inline bool is_unsupported_uid(uid_t uid)
 {
 #define LAST_APPLICATION_UID 19999
 	uid_t appid = uid % 100000;
@@ -378,20 +378,37 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 	u32 *result = (u32 *)arg5;
 	u32 reply_ok = KERNEL_SU_OPTION;
 
-	if (KERNEL_SU_OPTION != option) {
-		return 0;
-	}
+	// we can skip this check when a manager is crowned already
+	if (likely(ksu_is_manager_uid_valid()))
+		goto skip_check;
 
-	// TODO: find it in throne tracker!
+	// this is mostly for that multiuser bs
+	// here we just let them suffer
 	uid_t current_uid_val = current_uid().val;
 	uid_t manager_uid = ksu_get_manager_uid();
-	if (current_uid_val != manager_uid &&
-	    current_uid_val % 100000 == manager_uid) {
-		ksu_set_manager_uid(current_uid_val);
+	if (current_uid_val != manager_uid && 
+		current_uid_val % 100000 == manager_uid) {
+			ksu_set_manager_uid(current_uid_val);
+			// make sure all cpus sees this change, next line will check
+			smp_mb();
 	}
+skip_check:
+	// yes this causes delay, but this keeps the delay consistent, which is what we want
+	barrier();
+	if (!is_allow_su())
+		return 0;
 
-	bool from_root = 0 == current_uid().val;
-	bool from_manager = ksu_is_manager();
+	// we move it after uid check here so they cannot
+	// compare 0xdeadbeef call to a non-0xdeadbeef call
+	// with barriers around for safety as the compiler
+	// might try to do something smart.
+	barrier();
+	if (KERNEL_SU_OPTION != option)
+		return 0;
+
+	// just continue old logic
+	bool from_root = !current_uid().val;
+	bool from_manager = is_manager();
 
 #ifdef CONFIG_KSU_KPROBES_HOOK
 	if (!from_root && !from_manager 
@@ -447,6 +464,15 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 		}
 		return 0;
 	}
+
+    if (arg2 == CMD_GET_VERSION_TAG) {
+        const char *tag = KERNEL_SU_VERSION_TAG;
+        size_t tag_len = strlen(tag) + 1;
+        if (copy_to_user((void __user *)arg3, tag, tag_len)) {
+            pr_err("prctl reply error, cmd: %lu\n", arg2);
+        }
+        return 0;
+    }
 
 	if (arg2 == CMD_GET_MANAGER_UID) {
 		uid_t manager_uid = ksu_get_manager_uid();
@@ -1045,13 +1071,14 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 	return 0;
 }
 
-static bool is_non_appuid(kuid_t uid)
+static bool is_appuid(kuid_t uid)
 {
 #define PER_USER_RANGE 100000
 #define FIRST_APPLICATION_UID 10000
+#define LAST_APPLICATION_UID 19999
 
 	uid_t appid = uid.val % PER_USER_RANGE;
-	return appid < FIRST_APPLICATION_UID;
+	return appid >= FIRST_APPLICATION_UID && appid <= LAST_APPLICATION_UID;
 }
 
 static bool should_umount(struct path *path)
@@ -1205,25 +1232,13 @@ int ksu_handle_setuid(struct cred *new, const struct cred *old)
 	}
 #endif // #ifdef CONFIG_KSU_SUSFS
 
-	if (is_non_appuid(new_uid)) {
-#ifdef CONFIG_KSU_DEBUG
-		pr_info("handle setuid ignore non application uid: %d\n", new_uid.val);
-#endif
+	if (!is_appuid(new_uid) || is_unsupported_uid(new_uid.val)) {
+		// pr_info("handle setuid ignore non application or isolated uid: %d\n", new_uid.val);
 		return 0;
 	}
 
-	// isolated process may be directly forked from zygote, always unmount
-	if (is_unsupported_app_uid(new_uid.val)) {
-#ifdef CONFIG_KSU_DEBUG
-		pr_info("handle umount for unsupported application uid: %d\n", new_uid.val);
-#endif
-		goto do_umount;
-	}
-
 	if (ksu_is_allow_uid(new_uid.val)) {
-#ifdef CONFIG_KSU_DEBUG
-		pr_info("handle setuid ignore allowed application: %d\n", new_uid.val);
-#endif
+		// pr_info("handle setuid ignore allowed application: %d\n", new_uid.val);
 		return 0;
 	}
 #ifdef CONFIG_KSU_SUSFS
@@ -1248,7 +1263,6 @@ out_ksu_try_umount:
 #endif
 	}
 
-do_umount:
 	// check old process's selinux context, if it is not zygote, ignore it!
 	// because some su apps may setuid to untrusted_app but they are in global mount namespace
 	// when we umount for such process, that is a disaster!
