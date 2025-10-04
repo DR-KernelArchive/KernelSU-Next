@@ -1120,9 +1120,9 @@ static int ksu_umount_mnt(struct path *path, int flags)
 }
 
 #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
-void ksu_try_umount(const char *mnt, bool check_mnt, int flags, uid_t uid)
+void try_umount(const char *mnt, bool check_mnt, int flags, uid_t uid)
 #else
-static void ksu_try_umount(const char *mnt, bool check_mnt, int flags)
+static void try_umount(const char *mnt, bool check_mnt, int flags)
 #endif
 {
 	struct path path;
@@ -1159,16 +1159,16 @@ static void ksu_try_umount(const char *mnt, bool check_mnt, int flags)
 void susfs_try_umount_all(uid_t uid) {
 	susfs_try_umount(uid);
 	/* For Legacy KSU only */
-	ksu_try_umount("/system", true, 0, uid);
-	ksu_try_umount("/system_ext", true, 0, uid);
-	ksu_try_umount("/vendor", true, 0, uid);
-	ksu_try_umount("/product", true, 0, uid);
-	ksu_try_umount("/odm", true, 0, uid);
+	try_umount("/system", true, 0, uid);
+	try_umount("/system_ext", true, 0, uid);
+	try_umount("/vendor", true, 0, uid);
+	try_umount("/product", true, 0, uid);
+	try_umount("/odm", true, 0, uid);
 	// - For '/data/adb/modules' we pass 'false' here because it is a loop device that we can't determine whether 
 	//   its dev_name is KSU or not, and it is safe to just umount it if it is really a mountpoint
-	ksu_try_umount("/data/adb/modules", false, MNT_DETACH, uid);
+	try_umount("/data/adb/modules", false, MNT_DETACH, uid);
 	/* For both Legacy KSU and Magic Mount KSU */
-	ksu_try_umount("/debug_ramdisk", true, MNT_DETACH, uid);
+	try_umount("/debug_ramdisk", true, MNT_DETACH, uid);
 }
 #endif
 
@@ -1221,23 +1221,23 @@ do_umount:
 #else
 	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
 	// filter the mountpoint whose target is `/data/adb`
-	ksu_try_umount("/odm", true, 0);
-	ksu_try_umount("/system", true, 0);
-	ksu_try_umount("/vendor", true, 0);
-	ksu_try_umount("/product", true, 0);
-	ksu_try_umount("/system_ext", true, 0);
-	ksu_try_umount("/data/adb/modules", false, MNT_DETACH);
+	try_umount("/odm", true, 0);
+	try_umount("/system", true, 0);
+	try_umount("/vendor", true, 0);
+	try_umount("/product", true, 0);
+	try_umount("/system_ext", true, 0);
+	try_umount("/data/adb/modules", false, MNT_DETACH);
 
 	// try umount ksu temp path
-	ksu_try_umount("/debug_ramdisk", false, MNT_DETACH);
-	ksu_try_umount("/sbin", false, MNT_DETACH);
+	try_umount("/debug_ramdisk", false, MNT_DETACH);
+	try_umount("/sbin", false, MNT_DETACH);
 
 	// try umount hosts file
-	ksu_try_umount("/system/etc/hosts", false, MNT_DETACH);
+	try_umount("/system/etc/hosts", false, MNT_DETACH);
 
 	// try umount lsposed dex2oat bins
-	ksu_try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
-	ksu_try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
+	try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
+	try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
 #endif // #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
 
 	get_task_struct(current);
@@ -1309,23 +1309,23 @@ int ksu_handle_setuid(struct cred *new, const struct cred *old)
 #endif
 	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
 	// filter the mountpoint whose target is `/data/adb`
-	ksu_try_umount("/odm", true, 0);
-	ksu_try_umount("/system", true, 0);
-	ksu_try_umount("/system_ext", true, 0);
-	ksu_try_umount("/vendor", true, 0);
-	ksu_try_umount("/product", true, 0);
-	ksu_try_umount("/data/adb/modules", false, MNT_DETACH);
+	try_umount("/odm", true, 0);
+	try_umount("/system", true, 0);
+	try_umount("/system_ext", true, 0);
+	try_umount("/vendor", true, 0);
+	try_umount("/product", true, 0);
+	try_umount("/data/adb/modules", false, MNT_DETACH);
 
 	// try umount ksu temp path
-	ksu_try_umount("/debug_ramdisk", false, MNT_DETACH);
-	ksu_try_umount("/sbin", false, MNT_DETACH);
+	try_umount("/debug_ramdisk", false, MNT_DETACH);
+	try_umount("/sbin", false, MNT_DETACH);
 
 	// try umount hosts file
-	ksu_try_umount("/system/etc/hosts", false, MNT_DETACH);
+	try_umount("/system/etc/hosts", false, MNT_DETACH);
 
 	// try umount lsposed dex2oat bins
-	ksu_try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
-	ksu_try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
+	try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
+	try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
 	return 0;
 }
 #endif
