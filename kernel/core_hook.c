@@ -63,15 +63,7 @@
 #endif
 
 #ifdef CONFIG_KSU_SUSFS
-bool susfs_is_allow_su(void)
-{
-	if (ksu_is_manager()) {
-		// we are manager, allow!
-		return true;
-	}
-	return ksu_is_allow_uid(current_uid().val);
-}
-
+bool susfs_is_boot_completed_triggered = false;
 extern u32 susfs_zygote_sid;
 extern bool susfs_is_mnt_devname_ksu(struct path *path);
 #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
@@ -84,6 +76,7 @@ extern void susfs_run_try_umount_for_current_mnt_ns(void);
 static bool susfs_is_umount_for_zygote_system_process_enabled = false;
 static bool susfs_is_umount_for_zygote_iso_service_enabled = false;
 extern bool susfs_hide_sus_mnts_for_all_procs;
+extern void susfs_reorder_mnt_id(void);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
 extern bool susfs_is_auto_add_sus_bind_mount_enabled;
@@ -131,6 +124,20 @@ static inline void susfs_on_post_fs_data(void) {
 	}
 	pr_info("susfs_is_auto_add_try_umount_for_bind_mount_enabled: %d\n", susfs_is_auto_add_try_umount_for_bind_mount_enabled);
 #endif // #ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+static inline bool is_some_system_uid(uid_t uid)
+{
+	return (uid >= 1000 && uid < 10000);
+}
+
+static inline bool is_zygote_isolated_service_uid(uid_t uid)
+{
+	return ((uid >= 90000 && uid < 100000) || (uid >= 1090000 && uid < 1100000));
+}
+
+static inline bool is_zygote_normal_app_uid(uid_t uid)
+{
+	return ((uid >= 10000 && uid < 19999) || (uid >= 1010000 && uid < 1019999));
+}
 }
 #endif // #ifdef CONFIG_KSU_SUSFS
 
@@ -518,6 +525,9 @@ skip_check:
 			static bool boot_complete_lock = false;
 			if (!boot_complete_lock) {
 				boot_complete_lock = true;
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+				susfs_is_boot_completed_triggered = true;
+#endif
 				pr_info("boot_complete triggered\n");
 			}
 			break;
@@ -1167,6 +1177,7 @@ void susfs_try_umount_all(uid_t uid) {
 }
 #endif
 
+#ifdef CONFIG_KSU_SUSFS
 int ksu_handle_setuid(struct cred *new, const struct cred *old)
 {
 	// this hook is used for umounting overlayfs for some uid, if there isn't any module mounted, just ignore it!
@@ -1186,51 +1197,81 @@ int ksu_handle_setuid(struct cred *new, const struct cred *old)
 		return 0;
 	}
 
-#ifdef CONFIG_KSU_SUSFS
-	// check if current process is zygote
-	bool is_zygote_child = susfs_is_sid_equal(old->security, susfs_zygote_sid);
-#endif // #ifdef CONFIG_KSU_SUSFS
-	if (likely(is_zygote_child)) {
-		// if spawned process is non user app process
-		if (unlikely(new_uid.val < 10000 && new_uid.val >= 1000)) {
-#ifdef CONFIG_KSU_SUSFS_SUS_SU
-			// set flag if zygote spawned system process is allowed for root access
-			if (!ksu_is_allow_uid(new_uid.val)) {
-				task_lock(current);
-				susfs_set_current_proc_su_not_allowed();
-				task_unlock(current);
-			}
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_SU
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-			// umount for the system process if path DATA_ADB_UMOUNT_FOR_ZYGOTE_SYSTEM_PROCESS exists
-			if (susfs_is_umount_for_zygote_system_process_enabled) {
-				goto out_ksu_try_umount;
-			}
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-		}
-#ifdef CONFIG_KSU_SUSFS
-		// - here we check if uid is a isolated service spawned by zygote directly
-		// - Apps that do not use "useAppZyogte" to start a isolated service will be directly
-		//   spawned by zygote which KSU will ignore it by default, the only fix for now is to
-		//   force a umount for those uid
-		// - Therefore make sure your root app doesn't use isolated service for root access
-		// - Kudos to ThePedroo, the author and maintainer of Rezygisk for finding and reporting
-		//   the detection, really big helps here!
-		else if (new_uid.val >= 90000 && new_uid.val < 1000000) {
-			task_lock(current);
-			susfs_set_current_non_root_user_app_proc();
-#ifdef CONFIG_KSU_SUSFS_SUS_SU
-			susfs_set_current_proc_su_not_allowed();
-#endif
-			task_unlock(current);
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-			if (susfs_is_umount_for_zygote_iso_service_enabled) {
-				goto out_susfs_try_umount_all;
-			}
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-		}
+	// We only interest in process spwaned by zygote
+	if (!susfs_is_sid_equal(old->security, susfs_zygote_sid)) {
+		return 0;
 	}
-#endif // #ifdef CONFIG_KSU_SUSFS
+
+	// Check if spawned process is isolated service first, and force to do umount if so  
+	if (is_zygote_isolated_service_uid(new_uid.val) && susfs_is_umount_for_zygote_iso_service_enabled) {
+		goto do_umount;
+	}
+
+	// Check if spawned process is normal user app and needs to be umounted
+	if (likely(is_zygote_normal_app_uid(new_uid.val) && ksu_uid_should_umount(new_uid.val))) {
+		goto do_umount;
+	}
+
+	// Lastly, Check if spawned process is some system process and needs to be umounted
+	if (unlikely(is_some_system_uid(new_uid.val) && susfs_is_umount_for_zygote_system_process_enabled)) {
+		goto do_umount;
+	}
+
+	return 0;
+
+do_umount:
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+	// susfs come first, and lastly umount by ksu, make sure umount in reversed order
+	susfs_try_umount_all(new_uid.val);
+#else
+	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
+	// filter the mountpoint whose target is `/data/adb`
+	try_umount("/odm", true, 0);
+	try_umount("/system", true, 0);
+	try_umount("/vendor", true, 0);
+	try_umount("/product", true, 0);
+	try_umount("/system_ext", true, 0);
+	try_umount("/data/adb/modules", false, MNT_DETACH);
+
+	// try umount ksu temp path
+	try_umount("/debug_ramdisk", false, MNT_DETACH);
+#endif // #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+
+	get_task_struct(current);
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	// We can reorder the mnt_id now after all sus mounts are umounted
+	susfs_reorder_mnt_id();
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
+	susfs_set_current_proc_umounted();
+
+	put_task_struct(current);
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	susfs_run_sus_path_loop(new_uid.val);
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	return 0;
+}
+#else
+int ksu_handle_setuid(struct cred *new, const struct cred *old)
+{
+	// this hook is used for umounting overlayfs for some uid, if there isn't any module mounted, just ignore it!
+	if (!ksu_module_mounted) {
+		return 0;
+	}
+
+	if (!new || !old) {
+		return 0;
+	}
+
+	kuid_t new_uid = new->uid;
+	kuid_t old_uid = old->uid;
+
+	if (0 != old_uid.val) {
+		// old process is not root, ignore it.
+		return 0;
+	}
 
 	if (!is_appuid(new_uid) || is_unsupported_uid(new_uid.val)) {
 		// pr_info("handle setuid ignore non application or isolated uid: %d\n", new_uid.val);
@@ -1241,20 +1282,7 @@ int ksu_handle_setuid(struct cred *new, const struct cred *old)
 		// pr_info("handle setuid ignore allowed application: %d\n", new_uid.val);
 		return 0;
 	}
-#ifdef CONFIG_KSU_SUSFS
-	else {
-		task_lock(current);
-		susfs_set_current_non_root_user_app_proc();
-#ifdef CONFIG_KSU_SUSFS_SUS_SU
-		susfs_set_current_proc_su_not_allowed();
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_SU
-		task_unlock(current);
-	}
-#endif // #ifdef CONFIG_KSU_SUSFS
 
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-out_ksu_try_umount:
-#endif
 	if (!ksu_uid_should_umount(new_uid.val)) {
 		return 0;
 	} else {
@@ -1276,12 +1304,6 @@ out_ksu_try_umount:
 	pr_info("handle umount for uid: %d, pid: %d\n", new_uid.val,
 		current->pid);
 #endif
-
-#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
-out_susfs_try_umount_all:
-	// susfs come first, and lastly umount by ksu, make sure umount in reversed order
-	susfs_try_umount_all(new_uid.val);
-#else
 	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
 	// filter the mountpoint whose target is `/data/adb`
 	ksu_try_umount("/odm", true, 0);
@@ -1301,10 +1323,9 @@ out_susfs_try_umount_all:
 	// try umount lsposed dex2oat bins
 	ksu_try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
 	ksu_try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
-#endif
 	return 0;
 }
-
+#endif
 // Init functons
 
 static int handler_pre(struct kprobe *p, struct pt_regs *regs)
