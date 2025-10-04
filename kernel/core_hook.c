@@ -1226,15 +1226,25 @@ do_umount:
 #else
 	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
 	// filter the mountpoint whose target is `/data/adb`
+	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
+	// filter the mountpoint whose target is `/data/adb`
 	try_umount("/odm", true, 0);
 	try_umount("/system", true, 0);
+	try_umount("/system_ext", true, 0);
 	try_umount("/vendor", true, 0);
 	try_umount("/product", true, 0);
-	try_umount("/system_ext", true, 0);
 	try_umount("/data/adb/modules", false, MNT_DETACH);
 
 	// try umount ksu temp path
 	try_umount("/debug_ramdisk", false, MNT_DETACH);
+	try_umount("/sbin", false, MNT_DETACH);
+
+	// try umount hosts file
+	try_umount("/system/etc/hosts", false, MNT_DETACH);
+
+	// try umount lsposed dex2oat bins
+	try_umount("/apex/com.android.art/bin/dex2oat64", false, MNT_DETACH);
+	try_umount("/apex/com.android.art/bin/dex2oat32", false, MNT_DETACH);
 #endif // #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
 
 	get_task_struct(current);
