@@ -124,6 +124,7 @@ static inline void susfs_on_post_fs_data(void) {
 	}
 	pr_info("susfs_is_auto_add_try_umount_for_bind_mount_enabled: %d\n", susfs_is_auto_add_try_umount_for_bind_mount_enabled);
 #endif // #ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+}
 static inline bool is_some_system_uid(uid_t uid)
 {
 	return (uid >= 1000 && uid < 10000);
@@ -137,7 +138,6 @@ static inline bool is_zygote_isolated_service_uid(uid_t uid)
 static inline bool is_zygote_normal_app_uid(uid_t uid)
 {
 	return ((uid >= 10000 && uid < 19999) || (uid >= 1010000 && uid < 1019999));
-}
 }
 #endif // #ifdef CONFIG_KSU_SUSFS
 
@@ -801,11 +801,6 @@ skip_check:
 			if (copy_to_user((void __user*)arg5, &error, sizeof(error)))
 				pr_info("susfs: copy_to_user() failed\n");
 			return 0;
-		}
-		if (arg2 == CMD_SUSFS_RUN_UMOUNT_FOR_CURRENT_MNT_NS) {
-			int error = 0;
-			susfs_run_try_umount_for_current_mnt_ns();
-			pr_info("susfs: CMD_SUSFS_RUN_UMOUNT_FOR_CURRENT_MNT_NS -> ret: %d\n", error);
 		}
 #endif //#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
 #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
