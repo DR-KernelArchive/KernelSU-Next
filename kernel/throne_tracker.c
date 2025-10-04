@@ -16,9 +16,6 @@
 #include "throne_tracker.h"
 #include "kernel_compat.h"
 
-#include <linux/kthread.h>
-#include <linux/sched.h>
-
 uid_t ksu_manager_uid = KSU_INVALID_UID;
 static uid_t locked_manager_uid = KSU_INVALID_UID;
 
@@ -367,7 +364,7 @@ FILLDIR_RETURN_TYPE my_actor(struct dir_context *ctx, const char *name,
 				}
 			}
 
-			bool is_manager = ksu_is_manager_apk(dirpath);
+			bool is_manager = is_manager_apk(dirpath);
 			pr_info("Found new base.apk at path: %s, is_manager: %d\n",
 				dirpath, is_manager);
 			if (is_manager) {
@@ -434,7 +431,7 @@ static void search_manager(const char *path, int depth, struct list_head *uid_da
 			struct file *file;
 
 			if (!stop) {
-				file = ksu_filp_open_compat(pos->dirpath, O_RDONLY | O_NOFOLLOW | O_DIRECTORY, 0);
+				file = ksu_filp_open_compat(pos->dirpath, O_RDONLY | O_NOFOLLOW, 0);
 				if (IS_ERR(file)) {
 					pr_err("Failed to open directory: %s, err: %ld\n", pos->dirpath, PTR_ERR(file));
 					goto skip_iterate;
@@ -493,7 +490,7 @@ static bool is_uid_exist(uid_t uid, char *package, void *data)
 	return exist;
 }
 
-static void track_throne_function()
+void track_throne()
 {
 	struct list_head uid_list;
 	struct uid_data *np, *n;
@@ -606,37 +603,6 @@ out:
 	list_for_each_entry_safe(np, n, &uid_list, list) {
 		list_del(&np->list);
 		kfree(np);
-	}
-}
-
-static int throne_tracker_thread(void *data)
-{
-	pr_info("%s: pid: %d started\n", __func__, current->pid);
-	track_throne_function();
-	throne_thread = NULL;
-	smp_mb();
-	pr_info("%s: pid: %d exit!\n", __func__, current->pid);
-	return 0;
-}
-
-void ksu_track_throne()
-{
-#ifndef CONFIG_KSU_THRONE_TRACKER_ALWAYS_THREADED
-	static bool throne_tracker_first_run __read_mostly = true;
-	if (unlikely(throne_tracker_first_run)) {
-		track_throne_function();
-		throne_tracker_first_run = false;
-		return;
-	}
-#endif
-	smp_mb();
-	if (throne_thread != NULL) // single instance lock
-		return;
-
-	throne_thread = kthread_run(throne_tracker_thread, NULL, "throne_tracker");
-	if (IS_ERR(throne_thread)) {
-		throne_thread = NULL;
-		return;
 	}
 }
 
