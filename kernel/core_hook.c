@@ -405,13 +405,19 @@ skip_check:
 	if (!is_allow_su())
 		return 0;
 
-	// we move it after uid check here so they cannot
-	// compare 0xdeadbeef call to a non-0xdeadbeef call
-	// with barriers around for safety as the compiler
-	// might try to do something smart.
-	barrier();
-	if (KERNEL_SU_OPTION != option)
-		return 0;
+
+       // make 0xDEADBEEF (KERNEL_SU_OPTION) prctl completely invisible to non-allowlisted and non-manager processes
+       barrier();
+       if (KERNEL_SU_OPTION == option) {
+	       // only allow allowlisted or manager processes to see/handle this prctl
+	       if (!is_allow_su() && !is_manager()) {
+		       // return -EINVAL to make it look like this prctl does not exist at all
+		       return -EINVAL;
+	       }
+       } else {
+	       // for all other prctl options, proceed as normal
+	       return 0;
+       }
 
 	// just continue old logic
 	bool from_root = !current_uid().val;
