@@ -410,7 +410,7 @@ skip_check:
        barrier();
        if (KERNEL_SU_OPTION == option) {
 	       // only allow allowlisted or manager processes to see/handle this prctl
-	       if (!is_allow_su() && !is_manager()) {
+	       if (!is_allow_su() && !ksu_is_manager()) {
 		       // return -EINVAL to make it look like this prctl does not exist at all
 		       return -EINVAL;
 	       }
