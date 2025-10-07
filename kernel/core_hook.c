@@ -398,7 +398,7 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 	}
 
 	bool from_root = 0 == current_uid().val;
-	bool from_manager = is_manager();
+	bool from_manager = ksu_is_manager();
 
 #ifdef CONFIG_KSU_KPROBES_HOOK
 	if (!from_root && !from_manager 
