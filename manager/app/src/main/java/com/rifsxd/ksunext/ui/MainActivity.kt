@@ -19,6 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Color
 import com.ramcosta.composedestinations.DestinationsNavHost
 import com.ramcosta.composedestinations.animations.NavHostAnimatedDestinationStyle
 import com.ramcosta.composedestinations.generated.NavGraphs
@@ -69,6 +74,10 @@ class MainActivity : ComponentActivity() {
             KernelSUTheme(amoledMode = amoledMode) {
                 val navController = rememberNavController()
                 val snackBarHostState = remember { SnackbarHostState() }
+                val currentDestination = navController.currentBackStackEntryAsState().value?.destination
+                val bottomBarRoutes = remember {
+                    BottomBarDestination.entries.map { it.direction.route }.toSet()
+                }
                 val navigator = navController.rememberDestinationsNavigator()
 
                 LaunchedEffect(zipUri) {
@@ -103,26 +112,71 @@ class MainActivity : ComponentActivity() {
                             navController = navController,
                             defaultTransitions = object : NavHostAnimatedDestinationStyle() {
                                 override val enterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-                                    slideInHorizontally(
-                                        initialOffsetX = { it },
-                                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                                    ) + fadeIn(animationSpec = tween(400))
+                                    if (targetState.destination.route in bottomBarRoutes && initialState.destination.route in bottomBarRoutes) {
+                                        // Slide left/right between bottom bar destinations
+                                        val fromIndex = BottomBarDestination.entries.indexOfFirst { it.direction.route == initialState.destination.route }
+                                        val toIndex = BottomBarDestination.entries.indexOfFirst { it.direction.route == targetState.destination.route }
+                                        if (toIndex > fromIndex) {
+                                            slideInHorizontally(initialOffsetX = { it })
+                                        } else {
+                                            slideInHorizontally(initialOffsetX = { -it })
+                                        }
+                                    } else if (targetState.destination.route !in bottomBarRoutes) {
+                                        // Slide in and fade in for detail screens
+                                        slideInHorizontally(
+                                            initialOffsetX = { it },
+                                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                                        ) + fadeIn(animationSpec = tween(400))
+                                    } else {
+                                        // Default fade in
+                                        fadeIn(animationSpec = tween(340))
+                                    }
                                 }
 
                                 override val exitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-                                    slideOutHorizontally(
-                                        targetOffsetX = { -it / 2 },
-                                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                                    ) + fadeOut(animationSpec = tween(400))
+                                    if (initialState.destination.route in bottomBarRoutes && targetState.destination.route in bottomBarRoutes) {
+                                        // Slide left/right between bottom bar destinations
+                                        val fromIndex = BottomBarDestination.entries.indexOfFirst { it.direction.route == initialState.destination.route }
+                                        val toIndex = BottomBarDestination.entries.indexOfFirst { it.direction.route == targetState.destination.route }
+                                        if (toIndex > fromIndex) {
+                                            slideOutHorizontally(targetOffsetX = { -it })
+                                        } else {
+                                            slideOutHorizontally(targetOffsetX = { it })
+                                        }
+                                    } else if (initialState.destination.route in bottomBarRoutes && targetState.destination.route !in bottomBarRoutes) {
+                                        // Slide out and fade out for main->detail
+                                        slideOutHorizontally(
+                                            targetOffsetX = { -it / 2 },
+                                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                                        ) + fadeOut(animationSpec = tween(400))
+                                    } else {
+                                        // Default fade out
+                                        fadeOut(animationSpec = tween(340))
+                                    }
                                 }
 
                                 override val popEnterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-                                    fadeIn(animationSpec = tween(340))
+                                    if (targetState.destination.route in bottomBarRoutes) {
+                                        // Slide in from left and fade in for pop to main
+                                        slideInHorizontally(
+                                            initialOffsetX = { -it / 2 },
+                                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                                        ) + fadeIn(animationSpec = tween(400))
+                                    } else {
+                                        // Pop between details: fade in
+                                        fadeIn(animationSpec = tween(340))
+                                    }
                                 }
 
                                 override val popExitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-                                    scaleOut(targetScale = 0.85f, animationSpec = spring(stiffness = Spring.StiffnessLow)) +
-                                    fadeOut(animationSpec = tween(400))
+                                    if (initialState.destination.route !in bottomBarRoutes) {
+                                        // Scale down and fade out for detail pop
+                                        scaleOut(targetScale = 0.85f, animationSpec = spring(stiffness = Spring.StiffnessLow)) +
+                                        fadeOut(animationSpec = tween(400))
+                                    } else {
+                                        // Tab pop: fade out
+                                        fadeOut(animationSpec = tween(340))
+                                    }
                                 }
                             }
                         )

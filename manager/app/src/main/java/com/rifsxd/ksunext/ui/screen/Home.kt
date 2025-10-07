@@ -171,9 +171,7 @@ private fun SuperuserCard(onClick: (() -> Unit)? = null) {
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer
         ),
-        modifier = Modifier
-            .height(IntrinsicSize.Min)
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+        modifier = Modifier.height(IntrinsicSize.Min)
     ) {
         Box(
             modifier = Modifier
@@ -229,9 +227,7 @@ private fun ModuleCard(onClick: (() -> Unit)? = null) {
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer
         ),
-        modifier = Modifier
-            .height(IntrinsicSize.Min)
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+        modifier = Modifier.height(IntrinsicSize.Min)
     ) {
         Box(
             modifier = Modifier
