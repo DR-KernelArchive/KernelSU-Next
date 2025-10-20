@@ -770,6 +770,7 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 #endif //#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 #ifdef CONFIG_KSU_SUSFS_SUS_MAPS
 		if (arg2 == CMD_SUSFS_ADD_SUS_MAPS) {
+			int error = 0;
 			if (!ksu_access_ok((void __user*)arg3, sizeof(struct st_susfs_sus_maps))) {
 				pr_err("susfs: CMD_SUSFS_ADD_SUS_MAPS -> arg3 is not accessible\n");
 				return 0;
@@ -784,6 +785,7 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 			return 0;
 		}
 		if (arg2 == CMD_SUSFS_UPDATE_SUS_MAPS) {
+			int error = 0;
 			if (!ksu_access_ok((void __user*)arg3, sizeof(struct st_susfs_sus_maps))) {
 				pr_err("susfs: CMD_SUSFS_UPDATE_SUS_MAPS -> arg3 is not accessible\n");
 				return 0;
@@ -798,6 +800,7 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 			return 0;
 		}
 		if (arg2 == CMD_SUSFS_ADD_SUS_MAPS_STATICALLY) {
+			int error = 0;
 			if (!ksu_access_ok((void __user*)arg3, sizeof(struct st_susfs_sus_maps))) {
 				pr_err("susfs: CMD_SUSFS_ADD_SUS_MAPS_STATICALLY -> arg3 is not accessible\n");
 				return 0;
