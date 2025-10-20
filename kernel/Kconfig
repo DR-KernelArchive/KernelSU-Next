@@ -180,6 +180,14 @@ config KSU_SUSFS_SUS_SU
       - Mode 2: Enable sus_su, and disable ksu kprobe hooks for su, which means the kernel inline hooks are enabled,
                 the same as the su implementaion of non-gki kernel without kprobe supported.
       - Only apps with root access granted by ksu manager are allowed to get root.
+
+config KSU_SUSFS_SUS_MAPS
+    bool "Enable to spoof suspicious maps"
+    depends on KSU_SUSFS
+    default y
+    help
+      Allow spoofing the user-defined mappings in /proc/self/[maps|smaps|map_files]
+
 endmenu
 
 endmenu

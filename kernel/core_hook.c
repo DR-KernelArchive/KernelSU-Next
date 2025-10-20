@@ -768,6 +768,50 @@ int ksu_handle_prctl(int option, unsigned long arg2, unsigned long arg3,
 			return 0;
         }
 #endif //#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+#ifdef CONFIG_KSU_SUSFS_SUS_MAPS
+		if (arg2 == CMD_SUSFS_ADD_SUS_MAPS) {
+			if (!ksu_access_ok((void __user*)arg3, sizeof(struct st_susfs_sus_maps))) {
+				pr_err("susfs: CMD_SUSFS_ADD_SUS_MAPS -> arg3 is not accessible\n");
+				return 0;
+			}
+			if (!ksu_access_ok((void __user*)arg5, sizeof(error))) {
+				pr_err("susfs: CMD_SUSFS_ADD_SUS_MAPS -> arg5 is not accessible\n");
+				return 0;
+			}
+			error = susfs_add_sus_maps((struct st_susfs_sus_maps __user*)arg3);
+			pr_info("susfs: CMD_SUSFS_ADD_SUS_MAPS -> ret: %d\n", error);
+			copy_to_user((void __user*)arg5, &error, sizeof(error));
+			return 0;
+		}
+		if (arg2 == CMD_SUSFS_UPDATE_SUS_MAPS) {
+			if (!ksu_access_ok((void __user*)arg3, sizeof(struct st_susfs_sus_maps))) {
+				pr_err("susfs: CMD_SUSFS_UPDATE_SUS_MAPS -> arg3 is not accessible\n");
+				return 0;
+			}
+			if (!ksu_access_ok((void __user*)arg5, sizeof(error))) {
+				pr_err("susfs: CMD_SUSFS_UPDATE_SUS_MAPS -> arg5 is not accessible\n");
+				return 0;
+			}
+			error = susfs_update_sus_maps((struct st_susfs_sus_maps __user*)arg3);
+			pr_info("susfs: CMD_SUSFS_UPDATE_SUS_MAPS -> ret: %d\n", error);
+			copy_to_user((void __user*)arg5, &error, sizeof(error));
+			return 0;
+		}
+		if (arg2 == CMD_SUSFS_ADD_SUS_MAPS_STATICALLY) {
+			if (!ksu_access_ok((void __user*)arg3, sizeof(struct st_susfs_sus_maps))) {
+				pr_err("susfs: CMD_SUSFS_ADD_SUS_MAPS_STATICALLY -> arg3 is not accessible\n");
+				return 0;
+			}
+			if (!ksu_access_ok((void __user*)arg5, sizeof(error))) {
+				pr_err("susfs: CMD_SUSFS_ADD_SUS_MAPS_STATICALLY -> arg5 is not accessible\n");
+				return 0;
+			}
+			error = susfs_add_sus_maps((struct st_susfs_sus_maps __user*)arg3);
+			pr_info("susfs: CMD_SUSFS_ADD_SUS_MAPS_STATICALLY -> ret: %d\n", error);
+			copy_to_user((void __user*)arg5, &error, sizeof(error));
+			return 0;
+		}
+#endif //#ifdef CONFIG_KSU_SUSFS_SUS_MAPS
 #ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
 		if (arg2 == CMD_SUSFS_ADD_TRY_UMOUNT) {
 			int error = 0;

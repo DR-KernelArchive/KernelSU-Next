@@ -204,6 +204,9 @@ $(info -- KSU_SUSFS: adding 'int path_umount(struct path *path, int flags);' to 
 endif
 
 ## For susfs stuff ##
+ifdef KSU_SUSFS_SUS_MAPS
+ccflags-y += -DKSU_SUSFS_SUS_MAPS
+endif
 ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
 $(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
 $(info )
