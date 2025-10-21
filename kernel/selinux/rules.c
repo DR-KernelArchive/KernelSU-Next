@@ -140,7 +140,8 @@ void ksu_apply_kernelsu_rules()
 	ksu_allow(db, "system_server", KERNEL_SU_DOMAIN, "process", "sigkill");
 
 	// Temporary fix for pm command
-	ksu_allow(db, "system_server", "untrusted_app_all_devpts", "chr_file", ALL);
+	ksu_allow(db, "system_server", "untrusted_app_all_devpts", "chr_file", "read");
+	ksu_allow(db, "system_server", "untrusted_app_all_devpts", "chr_file", "write");
 
 #ifdef CONFIG_KSU_SUSFS
 	// Allow umount in zygote process without installing zygisk
