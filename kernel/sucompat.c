@@ -199,9 +199,14 @@ int ksu_handle_execve_sucompat(int *fd, const char __user **filename_user,
 	return ksu_sucompat_user_common(filename_user, "sys_execve", true);
 }
 
+// dummified
 int ksu_handle_devpts(struct inode *inode)
 {
-	barrier();
+	return 0;
+}
+
+int __ksu_handle_devpts(struct inode *inode)
+{
 
 #ifndef CONFIG_KSU_KPROBES_HOOK
 	if (!ksu_sucompat_non_kp) {
@@ -219,20 +224,13 @@ int ksu_handle_devpts(struct inode *inode)
 		return 0;
 	}
 
-	if (!ksu_is_allow_uid(uid))
+	if (likely(!ksu_is_allow_uid(uid)))
 		return 0;
 
-	if (ksu_devpts_sid) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0)
-		struct inode_security_struct *sec = selinux_inode(inode);
-#else
-		struct inode_security_struct *sec =
-			(struct inode_security_struct *)inode->i_security;
-#endif
-		if (sec) {
-			sec->sid = ksu_devpts_sid;
-		}
-	}
+	struct inode_security_struct *sec = selinux_inode(inode);
+
+	if (ksu_devpts_sid && sec)
+		sec->sid = ksu_devpts_sid;
 
 	return 0;
 }
